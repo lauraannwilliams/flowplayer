@@ -1,0 +1,227 @@
+<!doctype html>
+<html>
+<head>
+
+<!-- player skin -->
+  <link rel="stylesheet" type="text/css"
+     href="http://releases.flowplayer.org/5.4.6/skin/playful.css">
+  
+  <style>
+  /* site specific styling */
+  body {
+     font: 12px "Myriad Pro", "Lucida Grande", "Helvetica Neue", sans-serif;
+     padding-top: 1%;
+     color: #999;
+     background-color: #333333;
+  }
+
+  #assignment{
+	font-family: monospace;
+  }
+  
+   /* custom player skin */
+  .flowplayer { width: 80%; background-color: #222; background-size: cover; max-width: 640px; }
+  .flowplayer .fp-controls { background-color: rgba(0, 0, 0, 0.4)}
+  .flowplayer .fp-timeline { background-color: rgba(0, 0, 0, 0.5)}
+  .flowplayer .fp-progress { background-color: rgba(92, 118, 153, 1)}
+  .flowplayer .fp-buffer { background-color: rgba(249, 249, 249, 1)}
+  
+  /** upgrade would be to dynamically generate style / background from array of videos **/
+  #heron .flowplayer { background-image: url(https://drive.cdn.flowplayer.org/174555/12436-snap.jpg)}
+  #surfer .flowplayer { background-image: url(https://drive.cdn.flowplayer.org/174555/12494-snap.jpg)}
+
+.fp-cuepoint {
+  position: absolute;
+  bottom: -6px;
+  width: 40px;
+  height: 20px;
+  font-size: 12px;
+  font-weight:bold;
+}
+.fp-cuepoint:after {
+  content: "|";
+}
+
+  </style>
+
+  <!-- flowplayer depends on jQuery 1.7.1+ -->
+  <script src="http://code.jquery.com/jquery-1.10.2.min.js"></script>
+
+  <!-- flowplayer javascript component -->
+  <script src="http://releases.flowplayer.org/5.4.6/flowplayer.min.js"></script>
+  <script>
+
+/* list of video(s) to display - upgrade would be to pull this from database */
+videos = {};
+videos['heron'] = {
+	/* video properties stored in the array, an upgrade would be to pull the data from the file and player
+	 but not sure on best way to do that without installing video player twice */
+	duration: 15.833,
+	ratio: 0.5625,
+	videos: [
+	   {webm: "http://drive.flowplayer.org/174555/12436-HeronTakesFlight720.webm"},
+	   {mp4: "http://drive.flowplayer.org/174555/12436-HeronTakesFlight720.mp4"}
+	],
+};
+videos['surfer'] = {
+	/* video properties stored in the array, an upgrade would be to pull the data from the file and player
+	 but not sure on best way to do that without installing video player twice */
+	duration: 21.563,
+	ratio: 0.5625,
+	videos: [
+	   {webm: "http://drive.flowplayer.org/174555/12494-surfers1SD.webm"},
+	   {mp4: "http://drive.flowplayer.org/174555/12494-surfers1SD.mp4"}
+	],
+};
+
+/* default flowplayer configuration */
+flowplayer.conf = { 
+		swf: "http://releases.flowplayer.org/5.4.6/flowplayer.swf" ,
+		fullscreen: false,
+		embed:false, 
+		generate_cuepoints: true
+	};
+
+/* dynamically generate cuepoints timestamps given a list of desired percentages
+caluculate_cuepoints( [85,90], duration in seconds )  
+returns an array of timestamps matching the submitted percentages */
+function calculate_cuepoints( desired, duration ){
+	cuepoints = []
+	length = desired.length
+	for (var i = 0; i < length; i++) {
+		cuepoints.push( { time: desired[i]/100*duration, percent: desired[i] } );
+	}
+	return cuepoints;
+}
+
+/* uses javascript to install video player after calculating desired cuepoints*/
+function install_player( id, video_data, desired_cuepoints = [] ){
+	cuepoints = calculate_cuepoints( desired_cuepoints, video_data.duration );
+	
+	var element = "#"+id+" .player";
+
+	$(element).flowplayer({
+		rtmp: "rtmp://s3b78u0kbtx79q.cloudfront.net/cfx/st",
+		cuepoints: cuepoints,
+		ratio: video_data.ratio,
+	    playlist: [ video_data.videos ]
+	});
+
+
+	display_info( id, $(element).data('flowplayer') );
+	
+	return $(element).data('flowplayer');
+
+}
+
+/** bind a particular cuepoint to trigger the mark_watched method */
+function bind_watched_state( api, cuepoint_percent, id ){
+	api.bind("cuepoint", function(e, api,cuepoint) {
+		if( cuepoint.percent != cuepoint_percent ) 
+			return; // do nothing if cuepoint doesn't match
+
+		update_tracking( id, 'at cuepoint' );
+		mark_watched( api.video, id )
+		
+	});	
+}
+
+/** trigger an asynchronous call to the server to record the view **/
+function mark_watched( video, id  ){
+	// passing the entire url - let the server side decide what needs to be stored
+	var jqxhr = $.get( 'mark_viewed.php?v=' + video.url )
+	.then(
+		function( data ) { update_tracking( id, 'success ' + data ); },
+		function() { update_tracking( id, 'failed' ); }
+	);
+
+}
+
+/* add dynamic display of percent and time for debugging */
+function display_info( id, api ){
+
+	api.bind("progress", function(e, api) {
+ 		show_percent( id, api.video); 
+		show_time( id, api.video); 
+	});
+
+	api.bind( 'ready', function( e, api) {
+		// show duration
+		$('#' + id + ' .duration').text( api.video.duration.toFixed(3) );
+	});
+}
+
+/** update tracking span with supplied text */
+function update_tracking( id, text ){
+	$('#' + id + ' .tracking').text( text );	
+	
+}
+
+/** calculat percent viewed and update percent span */
+function show_percent(id,  video ){
+	percent = video.time / video.duration * 100;
+	$('#' + id + ' .percent').text( percent.toFixed(2) + '%' );
+}
+
+/** update time span with current time of video */
+function show_time(id,  video ){
+	$('#' + id + ' .time').text( video.time.toFixed(3) );
+}
+
+/** ready function **/
+$(function () {
+ 
+	// install flowplayer to an element with class player with cuepoints at 85 and 90 %
+	heron_player = install_player( 'heron', videos['heron'], [85,90] )
+
+	// bind the watched call to the 90% cuepoint
+ 	bind_watched_state( heron_player, 90, 'heron' )
+
+	// example of reusability of code
+	// install flowplayer to an element with class player with cuepoints at 90 and 95 %
+	surfer_player = install_player( 'surfer', videos['surfer'], [85,90,95] )
+
+	// bind the watched call to the 90% cuepoint
+ 	bind_watched_state( surfer_player, 90, 'surfer' )
+
+
+});
+
+
+</script>
+ <title>Laura Williams' Code Test</title>
+<body>
+
+<div style="max-width: 640px">
+   <h1>Laura Williams' Code Test</h1>
+	<p id="assignment">Create a web page that plays a video using flowplayer. When the video playback is 90% done, send a notification to a backend script (the server side) about this event. Insert one record in the database for this event including timestamp and the video name. </p>
+
+	<div id="heron">
+		<h2>Example - Heron</h2>
+ 		<div class="player no-toggle aside-time no-volume no-mouseover no-mute play-button" style="max-width: 640px;" >
+ 	
+ 		</div>
+ 		<p>Total Duration: <span class="duration">0</span> seconds 
+			<br/>Current Time: <span class="time">0</span> seconds
+			     Current Percent: <span class="percent">0%</span></p>
+		<p>Cuepoints (|) have been added at 85% and 90% to simplify testing.</p>
+		<p>The tracking api is triggered when the 90% cuepoint is reached
+			<br/>Tracking status: <span class="tracking"> </span></p>
+	</div>
+
+	<div id="surfer">
+		<h2>Alternate Example - Surfer</h2>
+ 		<div class="player no-toggle aside-time no-volume no-mouseover no-mute play-button" style="max-width: 640px;" >
+ 	
+ 		</div>
+ 		<p>Total Duration: <span class="duration">0</span> seconds 
+			<br/>Current Time: <span class="time">0</span> seconds
+			     Current Percent: <span class="percent">0%</span></p>
+		<p>Cuepoints (|) have been added at 85%, 90% and 95% to simplify testing.</p>
+		<p>The tracking api is triggered when the 90% cuepoint is reached
+			<br/>Tracking status: <span class="tracking"> </span></p>
+	</div>
+
+</div>
+</body>
+</html>
