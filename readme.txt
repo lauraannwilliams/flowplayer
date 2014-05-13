@@ -1,5 +1,12 @@
 README:
 
+Assignment:
+Create a web page that plays a video using flowplayer. 
+When the video playback is 90% done, send a notification to a backend script (the server side) about this event. 
+Insert one record in the database for this event including timestamp and the video name. 
+
+Installation:
+
 To install this script
 
 1.) Create a mysql database to receive the records
